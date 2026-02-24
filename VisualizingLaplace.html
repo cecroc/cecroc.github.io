@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizing Laplace Transforms</title>
+
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #plot-container,
+        #plot-container>div {
+            width: 100%;
+            height: 100vh;
+            margin: auto;
+        }
+
+        div[tabindex="0"] {
+            margin: auto;
+        }
+
+        .mpl-toolbar {
+            text-align: center;
+        }
+
+        #controls {
+            position: absolute;
+            top: 30px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000;
+        }
+
+        .input-group {
+            margin-bottom: 10px;
+            font-family: Arial, sans-serif;
+        }
+
+        .loader {
+            border: 16px solid #f3f3f3;
+            border-top: 16px solid #3498db;
+            border-radius: 50%;
+            width: 120px;
+            height: 120px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="controls">
+        <div class="input-group">
+            <label for="real">Real part of poles:</label>
+            <input type="number" id="real" name="real" value="-1" step="0.1">
+        </div>
+        <div class="input-group">
+            <label for="imag">Imaginary part of poles: +/-
+            </label>
+            <input type="number" id="imag" name="imag" value="1" step="0.1">
+        </div>
+        <div class="input-group">
+            <input type="checkbox" id="add-zero" name="add-zero">
+            <label for="add-zero">Add zero at:</label>
+            <input type="number" id="zero" name="zero" value="-5" step="0.1" disabled>
+        </div>
+        <button onclick="main()">Create New Plot</button>
+    </div>
+    <div id="plot-container">
+        <!-- <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+            <div class="loader"></div>
+        </div> -->
+    </div>
+    <script type="text/javascript">
+        async function main() {
+            document.getElementById('plot-container').innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+            <div class="loader"></div>
+        </div>
+        `;
+
+            let pyodide = await loadPyodide();
+
+            await pyodide.loadPackage("matplotlib");
+
+            await pyodide.runPythonAsync(`
+from matplotlib import pyplot as plt, colors
+import numpy as np # numpy is a ubiquitous library for working with numbers
+import math # defines functions such as sqrt
+from js import document
+
+# set up a grid for plotting
+sig_limits = [-10,10]
+om_limits = [-20,20]
+N = 200 # number of points
+sig = np.arange(sig_limits[0], sig_limits[1], (sig_limits[1]-sig_limits[0])/N)
+omega = np.arange(om_limits[0], om_limits[1], (om_limits[1]-om_limits[0])/(N+1))
+SIG, OMEGA = np.meshgrid(sig, omega)
+
+K = 1 # gain value
+
+# define the transfer function with two poles
+# and the option to include one zero
+def Z(sig, om, p1, p2, z1=[]):
+    if z1==[]:
+        return 20*np.log10(np.abs(K / ((1-(sig + 1j*om)/p1)*(1-(sig + 1j*om)/p2))))
+    else:
+        return 20*np.log10(np.abs(K*(1-(sig + 1j*om)/z1) /
+        ((1-(sig + 1j*om)/p1)*(1-(sig + 1j*om)/p2))))
+
+# figure set-up
+fig = plt.figure(figsize = (8,8))
+ax = plt.axes(projection='3d')
+ax.set_xlabel('sigma', labelpad=20)
+ax.set_ylabel('omega', labelpad=20)
+ax.set_zlabel('|H(w)|_dB', labelpad=0)
+zlim = [-40,40]
+
+# pick your poles and zero
+#p1, p2 = -1, -10
+r=float(document.getElementById("real").value); im=float(document.getElementById("imag").value); p1, p2 = r+im*1j, r-im*1j
+
+if document.getElementById("add-zero").checked:
+    print("adding zero")
+    z = float(document.getElementById("zero").value)
+    Hs = Z(SIG, OMEGA, p1, p2, z);
+else:
+    print("not adding zero")
+    Hs = Z(SIG, OMEGA, p1, p2);
+
+# color the plot according to H(s)
+norm = colors.Normalize(zlim[0], zlim[1])
+m = plt.cm.ScalarMappable(norm=norm, cmap='viridis')
+m.set_array([])
+fcolors = m.to_rgba(Hs)
+# change the colors for values where sig>0 to visulaize the j-omega axis
+fcolors[:,sig>0,:] = fcolors[:,sig>0,:]-[0,0,0,.5]
+
+# 3d plot
+surf = ax.plot_surface(SIG, OMEGA, Hs, facecolors=fcolors)
+ax.set_zlim(zlim[0],zlim[1])
+fig.colorbar(surf, shrink=0.5, aspect=8)
+
+document.pyodideMplTarget = document.getElementById('plot-container')
+document.pyodideMplTarget.innerHTML = "";
+plt.show()
+`);
+        }
+
+        // addEventListener("DOMContentLoaded", main);
+        addEventListener("DOMContentLoaded", () => {
+            document.getElementById("add-zero").addEventListener("change", (event) => {
+                document.getElementById("zero").disabled = !event.target.checked;
+            });
+            main();
+        });
+    </script>
+
+</body>
+
+</html>
